@@ -1,5 +1,5 @@
 use super::clause::Clause;
-use std::collections::BTreeSet;
+use alloc::collections::BTreeSet;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Component {
@@ -90,7 +90,7 @@ impl From<bool> for Component {
     }
 }
 
-impl std::ops::BitAnd for Component {
+impl core::ops::BitAnd for Component {
     type Output = Component;
     fn bitand(self, rhs: Self) -> Component {
         match (self, rhs) {
@@ -104,7 +104,7 @@ impl std::ops::BitAnd for Component {
     }
 }
 
-impl std::ops::BitOr for Component {
+impl core::ops::BitOr for Component {
     type Output = Component;
     fn bitor(self, rhs: Self) -> Component {
         match (self, rhs) {

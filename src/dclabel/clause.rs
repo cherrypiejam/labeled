@@ -1,5 +1,5 @@
 use super::Principal;
-use std::collections::BTreeSet;
+use alloc::collections::BTreeSet;
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Clone)]
 pub struct Clause(pub(crate) BTreeSet<Principal>);
