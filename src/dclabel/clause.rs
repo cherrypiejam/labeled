@@ -2,7 +2,7 @@ use super::Principal;
 use alloc::collections::BTreeSet;
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Clone)]
-pub struct Clause(pub(crate) BTreeSet<Principal>);
+pub struct Clause(pub BTreeSet<Principal>);
 
 impl Clause {
     pub fn empty() -> Self {

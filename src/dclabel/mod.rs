@@ -10,8 +10,8 @@ pub type Principal = alloc::string::String;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct DCLabel {
-    secrecy: Component,
-    integrity: Component,
+    pub secrecy: Component,
+    pub integrity: Component,
 }
 
 impl DCLabel {
