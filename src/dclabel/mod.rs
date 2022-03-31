@@ -1,3 +1,5 @@
+use serde::{Serialize, Deserialize};
+
 use super::Label;
 
 pub mod clause;
@@ -8,7 +10,7 @@ pub use component::*;
 
 pub type Principal = alloc::string::String;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct DCLabel {
     pub secrecy: Component,
     pub integrity: Component,

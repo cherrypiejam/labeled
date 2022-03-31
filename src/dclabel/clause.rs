@@ -1,7 +1,9 @@
+use serde::{Serialize, Deserialize};
+
 use super::Principal;
 use alloc::collections::BTreeSet;
 
-#[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Clone)]
+#[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Clone, Serialize, Deserialize)]
 pub struct Clause(pub BTreeSet<Principal>);
 
 impl Clause {

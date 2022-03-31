@@ -1,7 +1,9 @@
+use serde::{Serialize, Deserialize};
+
 use super::clause::Clause;
 use alloc::collections::BTreeSet;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Component {
     DCFalse,
     DCFormula(BTreeSet<Clause>),
