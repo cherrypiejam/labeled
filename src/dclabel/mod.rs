@@ -65,11 +65,71 @@ impl Label for DCLabel {
     fn can_flow_to(&self, rhs: &Self) -> bool {
         rhs.secrecy.implies(&self.secrecy) && self.integrity.implies(&rhs.integrity)
     }
+
+    fn can_flow_to_with_privilege(&self, rhs: &Self, privilege: &Component) -> bool {
+        (rhs.secrecy.clone() & privilege.clone()).implies(&self.secrecy) && (self.integrity.clone() & privilege.clone()).implies(&rhs.integrity)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
+
+    #[test]
+    fn test_can_flow_to_with_privilege() {
+        let privilege = &Component::formula([["go_grader"]]);
+        // declassification
+        assert_eq!(
+            true,
+            DCLabel::new([["go_grader"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new(true, [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            DCLabel::new([["go_grader"], ["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            DCLabel::new([vec!["go_grader", "staff"], vec!["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            DCLabel::new([vec!["go_grader", "staff"], vec!["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            DCLabel::new([vec!["go_grader", "staff"], vec!["go_grader", "alice"], vec!["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            DCLabel::new([vec!["go_grader", "staff"], vec!["go_grader", "alice"], vec!["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        // banned declassification
+        assert_eq!(
+            false,
+            DCLabel::new([["go_grader"], ["staff"], ["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        // endorse
+        assert_eq!(
+            true,
+            DCLabel::new([["bob"]], true)
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+    }
 
     #[test]
     fn test_extreme_can_flow_to() {
