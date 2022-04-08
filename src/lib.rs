@@ -11,3 +11,10 @@ pub trait Label {
     fn can_flow_to(&self, rhs: &Self) -> bool;
 }
 
+pub trait HasPrivilege {
+    type Privilege;
+
+    fn downgrade(self, privilege: &Self::Privilege) -> Self;
+    fn can_flow_to_with_privilege(&self, rhs: &Self, privilege: &Self::Privilege) -> bool;
+}
+

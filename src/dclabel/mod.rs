@@ -1,4 +1,6 @@
-use super::Label;
+use serde::{Serialize, Deserialize};
+
+use super::{HasPrivilege, Label};
 
 pub mod clause;
 pub mod component;
@@ -8,7 +10,7 @@ pub use component::*;
 
 pub type Principal = alloc::string::String;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct DCLabel {
     pub secrecy: Component,
     pub integrity: Component,
@@ -65,9 +67,104 @@ impl Label for DCLabel {
     }
 }
 
+impl HasPrivilege for DCLabel {
+    type Privilege = Component;
+
+    fn downgrade(mut self, privilege: &Component) -> DCLabel {
+        self.secrecy = match (self.secrecy, privilege) {
+            //not real (DCTrue, _) => DCTrue, // can't go lower than true
+            (_, Component::DCFalse) => Component::dc_true(), // false can downgrade _anything_ to true
+            (Component::DCFalse, _) => Component::dc_false(), // only false can downgrade false
+            (Component::DCFormula(mut sec), Component::DCFormula(p)) => {
+                sec.retain(|c| !p.iter().any(|pclause| pclause.implies(c)));
+                Component::DCFormula(sec)
+            },
+        };
+        self.integrity = privilege.clone() & self.integrity;
+        self
+    }
+
+    fn can_flow_to_with_privilege(&self, rhs: &Self, privilege: &Component) -> bool {
+        (rhs.secrecy.clone() & privilege.clone()).implies(&self.secrecy) && (self.integrity.clone() & privilege.clone()).implies(&rhs.integrity)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
+
+    #[test]
+    fn test_can_flow_to_with_privilege() {
+        let privilege = &Component::formula([["go_grader"]]);
+        // declassification
+        assert_eq!(
+            true,
+            DCLabel::new([["go_grader"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new(true, [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            DCLabel::new([["go_grader"], ["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            DCLabel::new([vec!["go_grader", "staff"], vec!["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            DCLabel::new([vec!["go_grader", "staff"], vec!["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            DCLabel::new([vec!["go_grader", "staff"], vec!["go_grader", "alice"], vec!["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            DCLabel::new([vec!["go_grader", "staff"], vec!["go_grader", "alice"], vec!["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        // banned declassification
+        assert_eq!(
+            false,
+            DCLabel::new([["go_grader"], ["staff"], ["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        // endorse
+        assert_eq!(
+            true,
+            DCLabel::new([["bob"]], true)
+                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+        );
+    }
+
+    #[test]
+    fn test_downgrade() {
+        // True can't downgrade anything
+        assert_eq!(DCLabel::new(true, true), DCLabel::new(true, true).downgrade(&true.into()));
+        assert_eq!(DCLabel::new(false, true), DCLabel::new(false, true).downgrade(&true.into()));
+        assert_eq!(DCLabel::new(true, false), DCLabel::new(true, false).downgrade(&true.into()));
+        assert_eq!(DCLabel::new([["amit"]], false), DCLabel::new([["amit"]], false).downgrade(&true.into()));
+        assert_eq!(DCLabel::new(false, [["amit"]]), DCLabel::new(false, [["amit"]]).downgrade(&true.into()));
+
+        // False downgrades everything
+        assert_eq!(DCLabel::new(true, false), DCLabel::new(true, true).downgrade(&false.into()));
+        assert_eq!(DCLabel::new(true, false), DCLabel::new(false, true).downgrade(&false.into()));
+        assert_eq!(DCLabel::new(true, false), DCLabel::new(true, false).downgrade(&false.into()));
+        assert_eq!(DCLabel::new(true, false), DCLabel::new([["amit"]], false).downgrade(&false.into()));
+        assert_eq!(DCLabel::new(true, false), DCLabel::new(false, [["amit"]]).downgrade(&false.into()));
+    }
 
     #[test]
     fn test_extreme_can_flow_to() {
