@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use super::Label;
+use super::{HasPrivilege, Label};
 
 pub mod clause;
 pub mod component;
@@ -64,6 +64,24 @@ impl Label for DCLabel {
 
     fn can_flow_to(&self, rhs: &Self) -> bool {
         rhs.secrecy.implies(&self.secrecy) && self.integrity.implies(&rhs.integrity)
+    }
+}
+
+impl HasPrivilege for DCLabel {
+    type Privilege = Component;
+
+    fn downgrade(mut self, privilege: &Component) -> DCLabel {
+        self.secrecy = match (self.secrecy, privilege) {
+            //not real (DCTrue, _) => DCTrue, // can't go lower than true
+            (_, Component::DCFalse) => Component::dc_true(), // false can downgrade _anything_ to true
+            (Component::DCFalse, _) => Component::dc_false(), // only false can downgrade false
+            (Component::DCFormula(mut sec), Component::DCFormula(p)) => {
+                sec.retain(|c| !p.iter().any(|pclause| pclause.implies(c)));
+                Component::DCFormula(sec)
+            },
+        };
+        self.integrity = privilege.clone() & self.integrity;
+        self
     }
 
     fn can_flow_to_with_privilege(&self, rhs: &Self, privilege: &Component) -> bool {
@@ -129,6 +147,23 @@ mod tests {
             DCLabel::new([["bob"]], true)
                 .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
         );
+    }
+
+    #[test]
+    fn test_downgrade() {
+        // True can't downgrade anything
+        assert_eq!(DCLabel::new(true, true), DCLabel::new(true, true).downgrade(&true.into()));
+        assert_eq!(DCLabel::new(false, true), DCLabel::new(false, true).downgrade(&true.into()));
+        assert_eq!(DCLabel::new(true, false), DCLabel::new(true, false).downgrade(&true.into()));
+        assert_eq!(DCLabel::new([["amit"]], false), DCLabel::new([["amit"]], false).downgrade(&true.into()));
+        assert_eq!(DCLabel::new(false, [["amit"]]), DCLabel::new(false, [["amit"]]).downgrade(&true.into()));
+
+        // False downgrades everything
+        assert_eq!(DCLabel::new(true, false), DCLabel::new(true, true).downgrade(&false.into()));
+        assert_eq!(DCLabel::new(true, false), DCLabel::new(false, true).downgrade(&false.into()));
+        assert_eq!(DCLabel::new(true, false), DCLabel::new(true, false).downgrade(&false.into()));
+        assert_eq!(DCLabel::new(true, false), DCLabel::new([["amit"]], false).downgrade(&false.into()));
+        assert_eq!(DCLabel::new(true, false), DCLabel::new(false, [["amit"]]).downgrade(&false.into()));
     }
 
     #[test]
