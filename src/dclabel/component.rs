@@ -2,6 +2,7 @@ use serde::{Serialize, Deserialize};
 
 use super::clause::Clause;
 use alloc::collections::BTreeSet;
+use alloc::vec::Vec;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Component {
@@ -11,6 +12,14 @@ pub enum Component {
 
 impl Component {
     pub fn formula<C: Into<Clause> + Clone, const N: usize>(clauses: [C; N]) -> Component {
+        let mut result = BTreeSet::new();
+        for c in clauses.iter() {
+            result.insert(c.clone().into());
+        }
+        Component::DCFormula(result)
+    }
+
+    pub fn formula_from_vec<C: Into<Clause> + Clone>(clauses: Vec<C>) -> Component {
         let mut result = BTreeSet::new();
         for c in clauses.iter() {
             result.insert(c.clone().into());
@@ -79,6 +88,12 @@ impl Component {
 impl<C: Into<Clause> + Clone, const N: usize> From<[C; N]> for Component {
     fn from(clauses: [C; N]) -> Component {
         Component::formula(clauses)
+    }
+}
+
+impl<C: Into<Clause> + Clone> From<Vec<C>> for Component {
+    fn from(clauses: Vec<C>) -> Component {
+        Component::formula_from_vec(clauses)
     }
 }
 
