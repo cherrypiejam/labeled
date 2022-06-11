@@ -92,6 +92,12 @@ impl From<bool> for Component {
     }
 }
 
+impl From<BTreeSet<Clause>> for Component {
+    fn from(clauses: BTreeSet<Clause>) -> Component {
+        Component::DCFormula(clauses)
+    }
+}
+
 impl core::ops::BitAnd for Component {
     type Output = Component;
     fn bitand(self, rhs: Self) -> Component {

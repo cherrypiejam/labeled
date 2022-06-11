@@ -2,7 +2,6 @@ use serde::{Serialize, Deserialize};
 
 use super::Principal;
 use alloc::collections::BTreeSet;
-use alloc::vec::Vec;
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Clone, Serialize, Deserialize)]
 pub struct Clause(pub BTreeSet<Principal>);
@@ -13,14 +12,6 @@ impl Clause {
     }
 
     pub fn new<P: Into<Principal> + Clone, const N: usize>(principals: [P; N]) -> Clause {
-        let mut result = BTreeSet::new();
-        for p in principals.iter() {
-            result.insert(p.clone().into());
-        }
-        Self(result)
-    }
-
-    pub fn new_from_vec<P: Into<Principal> + Clone>(principals: Vec<P>) -> Clause {
         let mut result = BTreeSet::new();
         for p in principals.iter() {
             result.insert(p.clone().into());
@@ -40,9 +31,9 @@ impl<P: Into<Principal> + Clone, const N: usize> From<[P; N]> for Clause {
     }
 }
 
-impl<P: Into<Principal> + Clone> From<Vec<P>> for Clause {
-    fn from(principals: Vec<P>) -> Clause {
-        Clause::new_from_vec(principals)
+impl From<BTreeSet<Principal>> for Clause {
+    fn from(principals: BTreeSet<Principal>) -> Clause {
+        Clause(principals)
     }
 }
 
