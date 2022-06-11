@@ -84,6 +84,11 @@ impl HasPrivilege for DCLabel {
         self
     }
 
+    fn endorse(mut self, privilege: &Component) -> DCLabel {
+        self.integrity = privilege.clone() & self.integrity;
+        self
+    }
+
     fn can_flow_to_with_privilege(&self, rhs: &Self, privilege: &Component) -> bool {
         (rhs.secrecy.clone() & privilege.clone()).implies(&self.secrecy) && (self.integrity.clone() & privilege.clone()).implies(&rhs.integrity)
     }

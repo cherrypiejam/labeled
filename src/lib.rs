@@ -15,6 +15,7 @@ pub trait HasPrivilege {
     type Privilege;
 
     fn downgrade(self, privilege: &Self::Privilege) -> Self;
+    fn endorse(self, privilege: &Self::Privilege) -> Self;
     fn can_flow_to_with_privilege(&self, rhs: &Self, privilege: &Self::Privilege) -> bool;
 }
 
