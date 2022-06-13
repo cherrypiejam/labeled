@@ -1,10 +1,26 @@
-use serde::{Serialize, Deserialize};
+#[cfg(test)]
+use alloc::boxed::Box;
+#[cfg(test)]
+use quickcheck::Arbitrary;
+
+use serde::{Deserialize, Serialize};
 
 use super::Principal;
-use alloc::collections::BTreeSet;
+use alloc::{collections::BTreeSet, vec::Vec};
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Clone, Serialize, Deserialize)]
 pub struct Clause(pub BTreeSet<Principal>);
+
+#[cfg(test)]
+impl Arbitrary for Clause {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        Clause(BTreeSet::arbitrary(g))
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        Box::new(self.0.shrink().map(|x| Clause(x)))
+    }
+}
 
 impl Clause {
     pub fn empty() -> Self {
@@ -12,6 +28,14 @@ impl Clause {
     }
 
     pub fn new<P: Into<Principal> + Clone, const N: usize>(principals: [P; N]) -> Clause {
+        let mut result = BTreeSet::new();
+        for p in principals.iter() {
+            result.insert(p.clone().into());
+        }
+        Self(result)
+    }
+
+    pub fn new_from_vec<P: Into<Principal> + Clone>(principals: Vec<P>) -> Clause {
         let mut result = BTreeSet::new();
         for p in principals.iter() {
             result.insert(p.clone().into());
@@ -28,6 +52,12 @@ impl Clause {
 impl<P: Into<Principal> + Clone, const N: usize> From<[P; N]> for Clause {
     fn from(principals: [P; N]) -> Clause {
         Clause::new(principals)
+    }
+}
+
+impl<P: Into<Principal> + Clone> From<Vec<P>> for Clause {
+    fn from(principals: Vec<P>) -> Clause {
+        Clause::new_from_vec(principals)
     }
 }
 
@@ -69,5 +99,18 @@ mod tests {
             false,
             Clause::from(["Amit", "Yue"]).implies(&Clause::from(["Amit"]))
         );
+    }
+
+    quickcheck! {
+        fn empty_clause_implies_all(clause: Clause) -> bool {
+            let empty = Clause::empty();
+            empty.implies(&clause)
+        }
+
+        fn subset_implies_superset(clause1: Clause, clause2: Clause) -> bool {
+            let mut clause1 = clause1.clone();
+            clause1.0.append(&mut clause2.0.clone());
+            clause2.implies(&clause1)
+        }
     }
 }
