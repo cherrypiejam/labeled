@@ -1,4 +1,8 @@
-use serde::{Serialize, Deserialize};
+#[cfg(test)]
+use alloc::boxed::Box;
+#[cfg(test)]
+use quickcheck::Arbitrary;
+use serde::{Deserialize, Serialize};
 
 use super::{HasPrivilege, Label};
 
@@ -14,6 +18,24 @@ pub type Principal = alloc::string::String;
 pub struct DCLabel {
     pub secrecy: Component,
     pub integrity: Component,
+}
+
+#[cfg(test)]
+impl Arbitrary for DCLabel {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        DCLabel {
+            secrecy: Component::arbitrary(g),
+            integrity: Component::arbitrary(g),
+        }
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        Box::new(
+            (self.secrecy.clone(), self.integrity.clone())
+                .shrink()
+                .map(|(secrecy, integrity)| DCLabel { secrecy, integrity }),
+        )
+    }
 }
 
 impl DCLabel {
@@ -40,6 +62,11 @@ impl DCLabel {
     pub fn reduce(&mut self) {
         self.secrecy.reduce();
         self.integrity.reduce();
+    }
+
+    pub fn endorse(mut self, privilege: &Component) -> DCLabel {
+        self.integrity = privilege.clone() & self.integrity;
+        self
     }
 }
 
@@ -78,14 +105,23 @@ impl HasPrivilege for DCLabel {
             (Component::DCFormula(mut sec), Component::DCFormula(p)) => {
                 sec.retain(|c| !p.iter().any(|pclause| pclause.implies(c)));
                 Component::DCFormula(sec)
-            },
+            }
         };
         self.integrity = privilege.clone() & self.integrity;
         self
     }
 
+    fn downgrade_to(self, target: Self, privilege: &Self::Privilege) -> Self {
+        if self.can_flow_to_with_privilege(&target, privilege) {
+            return target;
+        } else {
+            return self;
+        }
+    }
+
     fn can_flow_to_with_privilege(&self, rhs: &Self, privilege: &Component) -> bool {
-        (rhs.secrecy.clone() & privilege.clone()).implies(&self.secrecy) && (self.integrity.clone() & privilege.clone()).implies(&rhs.integrity)
+        (rhs.secrecy.clone() & privilege.clone()).implies(&self.secrecy)
+            && (self.integrity.clone() & privilege.clone()).implies(&rhs.integrity)
     }
 }
 
@@ -124,14 +160,28 @@ mod tests {
 
         assert_eq!(
             true,
-            DCLabel::new([vec!["go_grader", "staff"], vec!["go_grader", "alice"], vec!["bob"]], [["go_grader"]])
-                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+            DCLabel::new(
+                [
+                    vec!["go_grader", "staff"],
+                    vec!["go_grader", "alice"],
+                    vec!["bob"]
+                ],
+                [["go_grader"]]
+            )
+            .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
         );
 
         assert_eq!(
             true,
-            DCLabel::new([vec!["go_grader", "staff"], vec!["go_grader", "alice"], vec!["bob"]], [["go_grader"]])
-                .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
+            DCLabel::new(
+                [
+                    vec!["go_grader", "staff"],
+                    vec!["go_grader", "alice"],
+                    vec!["bob"]
+                ],
+                [["go_grader"]]
+            )
+            .can_flow_to_with_privilege(&DCLabel::new([["bob"]], [["go_grader"]]), privilege)
         );
 
         // banned declassification
@@ -152,18 +202,48 @@ mod tests {
     #[test]
     fn test_downgrade() {
         // True can't downgrade anything
-        assert_eq!(DCLabel::new(true, true), DCLabel::new(true, true).downgrade(&true.into()));
-        assert_eq!(DCLabel::new(false, true), DCLabel::new(false, true).downgrade(&true.into()));
-        assert_eq!(DCLabel::new(true, false), DCLabel::new(true, false).downgrade(&true.into()));
-        assert_eq!(DCLabel::new([["amit"]], false), DCLabel::new([["amit"]], false).downgrade(&true.into()));
-        assert_eq!(DCLabel::new(false, [["amit"]]), DCLabel::new(false, [["amit"]]).downgrade(&true.into()));
+        assert_eq!(
+            DCLabel::new(true, true),
+            DCLabel::new(true, true).downgrade(&true.into())
+        );
+        assert_eq!(
+            DCLabel::new(false, true),
+            DCLabel::new(false, true).downgrade(&true.into())
+        );
+        assert_eq!(
+            DCLabel::new(true, false),
+            DCLabel::new(true, false).downgrade(&true.into())
+        );
+        assert_eq!(
+            DCLabel::new([["amit"]], false),
+            DCLabel::new([["amit"]], false).downgrade(&true.into())
+        );
+        assert_eq!(
+            DCLabel::new(false, [["amit"]]),
+            DCLabel::new(false, [["amit"]]).downgrade(&true.into())
+        );
 
         // False downgrades everything
-        assert_eq!(DCLabel::new(true, false), DCLabel::new(true, true).downgrade(&false.into()));
-        assert_eq!(DCLabel::new(true, false), DCLabel::new(false, true).downgrade(&false.into()));
-        assert_eq!(DCLabel::new(true, false), DCLabel::new(true, false).downgrade(&false.into()));
-        assert_eq!(DCLabel::new(true, false), DCLabel::new([["amit"]], false).downgrade(&false.into()));
-        assert_eq!(DCLabel::new(true, false), DCLabel::new(false, [["amit"]]).downgrade(&false.into()));
+        assert_eq!(
+            DCLabel::new(true, false),
+            DCLabel::new(true, true).downgrade(&false.into())
+        );
+        assert_eq!(
+            DCLabel::new(true, false),
+            DCLabel::new(false, true).downgrade(&false.into())
+        );
+        assert_eq!(
+            DCLabel::new(true, false),
+            DCLabel::new(true, false).downgrade(&false.into())
+        );
+        assert_eq!(
+            DCLabel::new(true, false),
+            DCLabel::new([["amit"]], false).downgrade(&false.into())
+        );
+        assert_eq!(
+            DCLabel::new(true, false),
+            DCLabel::new(false, [["amit"]]).downgrade(&false.into())
+        );
     }
 
     #[test]
@@ -181,20 +261,17 @@ mod tests {
     fn test_basic_can_flow_to_integrity() {
         assert_eq!(
             true,
-            DCLabel::new(true, [["Amit"]])
-                .can_flow_to(&DCLabel::public())
+            DCLabel::new(true, [["Amit"]]).can_flow_to(&DCLabel::public())
         );
 
         assert_eq!(
             true,
-            DCLabel::new(true, [["Amit", "Yue"]])
-                .can_flow_to(&DCLabel::public())
+            DCLabel::new(true, [["Amit", "Yue"]]).can_flow_to(&DCLabel::public())
         );
 
         assert_eq!(
             true,
-            DCLabel::new(true, [["Amit"], ["Yue"]])
-                .can_flow_to(&DCLabel::new(true, [["Amit"]]))
+            DCLabel::new(true, [["Amit"], ["Yue"]]).can_flow_to(&DCLabel::new(true, [["Amit"]]))
         );
 
         assert_eq!(
@@ -214,26 +291,22 @@ mod tests {
     fn test_basic_can_flow_to_secrecy() {
         assert_eq!(
             false,
-            DCLabel::new([["Amit"]], true)
-                .can_flow_to(&DCLabel::public())
+            DCLabel::new([["Amit"]], true).can_flow_to(&DCLabel::public())
         );
 
         assert_eq!(
             false,
-            DCLabel::new([["Amit", "Yue"]], true)
-                .can_flow_to(&DCLabel::public())
+            DCLabel::new([["Amit", "Yue"]], true).can_flow_to(&DCLabel::public())
         );
 
         assert_eq!(
             false,
-            DCLabel::new([["Amit"], ["Yue"]], true)
-                .can_flow_to(&DCLabel::new([["Amit"]], true))
+            DCLabel::new([["Amit"], ["Yue"]], true).can_flow_to(&DCLabel::new([["Amit"]], true))
         );
 
         assert_eq!(
             false,
-            DCLabel::new([["Amit"], ["Yue"]], true)
-                .can_flow_to(&DCLabel::new([["Amit"]], true))
+            DCLabel::new([["Amit"], ["Yue"]], true).can_flow_to(&DCLabel::new([["Amit"]], true))
         );
 
         assert_eq!(
@@ -256,11 +329,15 @@ mod tests {
         assert_eq!(DCLabel::top(), DCLabel::bottom().lub(DCLabel::top()));
         assert_eq!(DCLabel::public(), DCLabel::bottom().lub(DCLabel::public()));
 
-        assert_eq!(DCLabel::new([["Amit"], ["Yue"]], true),
-            DCLabel::new([["Amit"]], true).lub(DCLabel::new([["Yue"]], true)));
+        assert_eq!(
+            DCLabel::new([["Amit"], ["Yue"]], true),
+            DCLabel::new([["Amit"]], true).lub(DCLabel::new([["Yue"]], true))
+        );
 
-        assert_eq!(DCLabel::new(true, [["Amit", "Yue"]]),
-            DCLabel::new(true, [["Amit"]]).lub(DCLabel::new(true, [["Yue"]])));
+        assert_eq!(
+            DCLabel::new(true, [["Amit", "Yue"]]),
+            DCLabel::new(true, [["Amit"]]).lub(DCLabel::new(true, [["Yue"]]))
+        );
     }
 
     #[test]
@@ -270,10 +347,41 @@ mod tests {
         assert_eq!(DCLabel::bottom(), DCLabel::bottom().glb(DCLabel::top()));
         assert_eq!(DCLabel::bottom(), DCLabel::bottom().glb(DCLabel::public()));
 
-        assert_eq!(DCLabel::new([["Amit", "Yue"]], true),
-            DCLabel::new([["Amit"]], true).glb(DCLabel::new([["Yue"]], true)));
+        assert_eq!(
+            DCLabel::new([["Amit", "Yue"]], true),
+            DCLabel::new([["Amit"]], true).glb(DCLabel::new([["Yue"]], true))
+        );
 
-        assert_eq!(DCLabel::new(true, [["Amit"], ["Yue"]]),
-            DCLabel::new(true, [["Amit"]]).glb(DCLabel::new(true, [["Yue"]])));
+        assert_eq!(
+            DCLabel::new(true, [["Amit"], ["Yue"]]),
+            DCLabel::new(true, [["Amit"]]).glb(DCLabel::new(true, [["Yue"]]))
+        );
+    }
+
+    quickcheck! {
+        fn everything_can_flow_to_top(lbl: DCLabel) -> bool {
+            let top = DCLabel::top();
+            lbl.can_flow_to(&top)
+        }
+
+        fn bottom_can_flow_to_everything(lbl: DCLabel) -> bool {
+            let bottom = DCLabel::bottom();
+            bottom.can_flow_to(&lbl)
+        }
+
+        fn both_can_flow_to_lub(lbl1: DCLabel, lbl2: DCLabel) -> bool {
+            let result = lbl1.clone().lub(lbl2.clone());
+            lbl1.can_flow_to(&result) && lbl2.can_flow_to(&result)
+        }
+
+        fn glb_can_flow_to_both(lbl1: DCLabel, lbl2: DCLabel) -> bool {
+            let result = lbl1.clone().glb(lbl2.clone());
+            result.can_flow_to(&lbl1) && result.can_flow_to(&lbl2)
+        }
+
+        fn endorse_equiv_downgrade_to(lbl: DCLabel, privilege: Component) -> bool {
+            let target = DCLabel { secrecy: lbl.secrecy.clone(), integrity: lbl.integrity.clone() & privilege.clone() };
+            lbl.clone().downgrade_to(target, &privilege) == lbl.endorse(&privilege)
+        }
     }
 }

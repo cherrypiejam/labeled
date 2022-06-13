@@ -9,6 +9,10 @@ edition = "2018"
 [dependencies]
 serde = {version = "1.0.102", features = ["derive"]}
 
+[dev-dependencies]
+quickcheck = "1"
+quickcheck_macros = "1"
+
 [features]
 default = [ "dclabel" ]
 dclabel = []

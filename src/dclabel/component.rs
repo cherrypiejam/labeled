@@ -1,4 +1,8 @@
-use serde::{Serialize, Deserialize};
+#[cfg(test)]
+use alloc::boxed::Box;
+#[cfg(test)]
+use quickcheck::{empty_shrinker, Arbitrary};
+use serde::{Deserialize, Serialize};
 
 use super::clause::Clause;
 use alloc::collections::BTreeSet;
@@ -7,6 +11,24 @@ use alloc::collections::BTreeSet;
 pub enum Component {
     DCFalse,
     DCFormula(BTreeSet<Clause>),
+}
+
+#[cfg(test)]
+impl Arbitrary for Component {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        if !bool::arbitrary(g) {
+            Component::DCFalse
+        } else {
+            Component::DCFormula(BTreeSet::arbitrary(g))
+        }
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        match self {
+            Component::DCFalse => empty_shrinker(),
+            Component::DCFormula(clauses) => Box::new(clauses.shrink().map(Component::DCFormula)),
+        }
+    }
 }
 
 impl Component {
@@ -148,7 +170,10 @@ mod tests {
 
     #[test]
     fn test_true_not_implies_not_true() {
-        assert_eq!(false, Component::dc_true().implies(&Component::from([["Amit"]])));
+        assert_eq!(
+            false,
+            Component::dc_true().implies(&Component::from([["Amit"]]))
+        );
     }
 
     #[test]
@@ -190,6 +215,60 @@ mod tests {
 
     #[test]
     fn test_or() {
-        assert_eq!(Component::from([["Amit", "Yue"], ["David", "Yue"]]), Component::from([["Amit"], ["David"]]) | Component::from([["Yue"]]));
+        assert_eq!(
+            Component::from([["Amit", "Yue"], ["David", "Yue"]]),
+            Component::from([["Amit"], ["David"]]) | Component::from([["Yue"]])
+        );
+    }
+
+    quickcheck! {
+        fn x_implies_x(component: Component) -> bool {
+            let other = component.clone();
+            component.implies(&other) && other.implies(&component)
+        }
+
+        fn true_not_implies_not_true(component: Component) -> bool {
+            if component.is_true() {
+                true
+            } else {
+                !Component::dc_true().implies(&component)
+            }
+        }
+
+        fn nothing_implies_false(component: Component) -> bool {
+            if component.is_false() {
+                true
+            } else {
+                !component.implies(&Component::dc_false())
+            }
+        }
+
+        fn false_implies_everything(component: Component) -> bool {
+            Component::dc_false().implies(&component)
+        }
+
+        fn everything_implies_true(component: Component) -> bool {
+            component.implies(&Component::dc_true())
+        }
+
+        fn superset_implies_subset(component1: Component, component2: Component) -> bool {
+            let component1 = component1 & component2.clone();
+            component1.implies(&component2)
+        }
+
+        fn reduce_simplifies(component: Component) -> bool {
+            let mut component = component.clone();
+            component.reduce();
+            if let Component::DCFormula(clauses) =  component {
+                for (i, clausef) in clauses.iter().enumerate() {
+                    for clauser in clauses.iter().skip(i + 1) {
+                        if clausef.implies(clauser) || clauser.implies(clausef) {
+                            return false
+                        }
+                    }
+                }
+            }
+            true
+        }
     }
 }
