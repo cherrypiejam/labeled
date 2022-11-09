@@ -20,6 +20,43 @@ pub struct DCLabel {
     pub integrity: Component,
 }
 
+impl DCLabel {
+    /// Parses a string into a DCLabel.
+    ///
+    /// The string separates secrecy and integrity with a comma, clauses
+    /// separated with a '&' and principles with a '|'. The backslash character
+    /// ('\') allows escaping these special characters (including itself).
+    pub fn parse(input: &str) -> nom::IResult<&str, DCLabel> {
+        use alloc::collections::BTreeSet;
+        use nom::{
+            bytes::complete::{escaped_transform, tag},
+            character::complete::{alphanumeric1, one_of},
+            multi::separated_list1,
+            Parser,
+        };
+
+        let mut component = separated_list1(
+            tag("&"),
+            separated_list1(tag("|"), escaped_transform(alphanumeric1, '\\', one_of(r#",|&\"#))),
+        )
+        .map(|mut c| {
+            c.iter_mut()
+                .map(|c| {
+                    c.drain(..)
+                        .collect::<BTreeSet<Principal>>()
+                        .into()
+                })
+                .collect::<BTreeSet<Clause>>()
+        });
+
+        let (input, secrecy) = component.parse(input)?;
+        let (input, _) = tag(",")(input)?;
+        let (input, integrity) = component.parse(input)?;
+
+        Ok((input, DCLabel::new(secrecy, integrity)))
+    }
+}
+
 #[cfg(test)]
 impl Arbitrary for DCLabel {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
@@ -355,6 +392,40 @@ mod tests {
         assert_eq!(
             DCLabel::new(true, [["Amit"], ["Yue"]]),
             DCLabel::new(true, [["Amit"]]).glb(DCLabel::new(true, [["Yue"]]))
+        );
+    }
+
+    #[test]
+    fn test_parse() {
+        assert_eq!(
+            DCLabel::parse("Amit,Yue"),
+            Ok(("", DCLabel::new([["Amit"]], [["Yue"]])))
+        );
+        assert_eq!(
+            DCLabel::parse("Amit|Yue,Yue"),
+            Ok(("", DCLabel::new([["Amit", "Yue"]], [["Yue"]])))
+        );
+        assert_eq!(
+            DCLabel::parse("Amit&Yue,Yue"),
+            Ok(("", DCLabel::new([["Amit"], ["Yue"]], [["Yue"]])))
+        );
+        assert_eq!(
+            DCLabel::parse("Amit&Yue|Natalie|Gongqi&Deian,Yue"),
+            Ok((
+                "",
+                DCLabel::new(
+                    [
+                        Clause::from(["Amit"]),
+                        Clause::from(["Yue", "Natalie", "Gongqi"]),
+                        Clause::from(["Deian"])
+                    ],
+                    [["Yue"]]
+                )
+            ))
+        );
+        assert_eq!(
+            DCLabel::parse(r#"Am\&it&Yue,Y\|ue"#),
+            Ok(("", DCLabel::new([["Am&it"], ["Yue"]], [["Y|ue"]])))
         );
     }
 

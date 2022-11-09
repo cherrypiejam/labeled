@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 serde = {version = "1.0.102", features = ["derive"]}
+nom = "7"
 
 [dev-dependencies]
 quickcheck = "1"
