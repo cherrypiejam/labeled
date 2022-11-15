@@ -15,5 +15,6 @@ quickcheck = "1"
 quickcheck_macros = "1"
 
 [features]
-default = [ "dclabel" ]
+default = [ "dclabel", "buckle" ]
 dclabel = []
+buckle = []

@@ -7,6 +7,8 @@ extern crate quickcheck;
 
 #[cfg(feature = "dclabel")]
 pub mod dclabel;
+#[cfg(feature = "buckle")]
+pub mod buckle;
 
 pub trait Label {
     fn lub(self, rhs: Self) -> Self;
