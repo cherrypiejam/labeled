@@ -45,30 +45,38 @@ impl Buckle {
             bytes::complete::{escaped_transform, tag},
             character::complete::{alphanumeric1, one_of},
             multi::separated_list1,
+            sequence::tuple,
             Parser,
         };
 
-        let mut component = separated_list1(
-            tag("&"),
-            separated_list1(
-                tag("|"),
-                separated_list1(
-                    tag("/"),
-                    escaped_transform(alphanumeric1, '\\', one_of(r#",|&/\"#)))),
-        )
-        .map(|mut c| {
-            c.iter_mut()
-                .map(|c| {
-                    c.drain(..)
-                        .collect::<BTreeSet<Vec<Principal>>>()
-                        .into()
-                })
-                .collect::<BTreeSet<Clause>>()
-        });
+        fn component(input: &str) -> nom::IResult<&str, Component> {
+            tag("T")
+                .map(|_| Component::dc_true())
+                .or(tag("F").map(|_| Component::dc_false()))
+                .or(nom::combinator::map(
+                    separated_list1(
+                        tag("&"),
+                        separated_list1(
+                            tag("|"),
+                            separated_list1(
+                                tag("/"),
+                                escaped_transform(alphanumeric1, '\\', one_of(r#",|&/\"#)),
+                            ),
+                        ),
+                    ),
+                    |mut c| {
+                        Component::DCFormula(
+                            c.iter_mut()
+                                .map(|c| c.drain(..).collect::<BTreeSet<Vec<Principal>>>().into())
+                                .collect::<BTreeSet<Clause>>(),
+                        )
+                    },
+                ))
+                .parse(input)
+        }
 
-        let (input, secrecy) = component.parse(input)?;
-        let (input, _) = tag(",")(input)?;
-        let (input, integrity) = component.parse(input)?;
+        let (input, (secrecy, _, integrity)) =
+            tuple((component, tag(","), component)).parse(input)?;
 
         Ok((input, Buckle::new(secrecy, integrity)))
     }
@@ -414,6 +422,9 @@ mod tests {
 
     #[test]
     fn test_parse() {
+        assert_eq!(Buckle::parse("T,T"), Ok(Buckle::public()));
+        assert_eq!(Buckle::parse("T,F"), Ok(Buckle::bottom()));
+        assert_eq!(Buckle::parse("F,T"), Ok(Buckle::top()));
         assert_eq!(
             Buckle::parse("Amit,Yue"),
             Ok(Buckle::new([["Amit"]], [["Yue"]]))
@@ -428,16 +439,14 @@ mod tests {
         );
         assert_eq!(
             Buckle::parse("Amit&Yue|Natalie|Gongqi&Deian,Yue"),
-            Ok(
-                Buckle::new(
-                    [
-                        Clause::from(["Amit"]),
-                        Clause::from(["Yue", "Natalie", "Gongqi"]),
-                        Clause::from(["Deian"])
-                    ],
-                    [["Yue"]]
-                )
-            )
+            Ok(Buckle::new(
+                [
+                    Clause::from(["Amit"]),
+                    Clause::from(["Yue", "Natalie", "Gongqi"]),
+                    Clause::from(["Deian"])
+                ],
+                [["Yue"]]
+            ))
         );
         assert_eq!(
             Buckle::parse(r#"Am\&it&Yue,Y\|ue"#),
@@ -446,7 +455,10 @@ mod tests {
 
         assert_eq!(
             Buckle::parse("Amit/test,Amit"),
-            Ok(Buckle::new(Component::from([Clause::new_from_vec(vec![vec!["Amit", "test"]])]), [["Amit"]]))
+            Ok(Buckle::new(
+                Component::from([Clause::new_from_vec(vec![vec!["Amit", "test"]])]),
+                [["Amit"]]
+            ))
         )
     }
 

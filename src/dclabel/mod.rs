@@ -37,15 +37,14 @@ impl DCLabel {
 
         let mut component = separated_list1(
             tag("&"),
-            separated_list1(tag("|"), escaped_transform(alphanumeric1, '\\', one_of(r#",|&\"#))),
+            separated_list1(
+                tag("|"),
+                escaped_transform(alphanumeric1, '\\', one_of(r#",|&\"#)),
+            ),
         )
         .map(|mut c| {
             c.iter_mut()
-                .map(|c| {
-                    c.drain(..)
-                        .collect::<BTreeSet<Principal>>()
-                        .into()
-                })
+                .map(|c| c.drain(..).collect::<BTreeSet<Principal>>().into())
                 .collect::<BTreeSet<Clause>>()
         });
 

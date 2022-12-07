@@ -6,8 +6,8 @@ use quickcheck::Arbitrary;
 use serde::{Deserialize, Serialize};
 
 use super::Principal;
-use alloc::{collections::BTreeSet, vec::Vec};
 use alloc::vec;
+use alloc::{collections::BTreeSet, vec::Vec};
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Clone, Serialize, Deserialize)]
 pub struct Clause(pub BTreeSet<Vec<Principal>>);
