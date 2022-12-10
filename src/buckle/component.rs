@@ -214,6 +214,20 @@ mod tests {
     }
 
     #[test]
+    fn test_yue_implies_yue_sub_hello() {
+        use alloc::{vec, string::String};
+        let clause_sup = Clause::new_from_vec(vec![vec![String::from("Yue")]]);
+        let clause_sub = Clause::new_from_vec(vec![vec!["Yue", "hello"]]);
+
+        assert_eq!(true, clause_sup.implies(&clause_sub));
+
+        let component_sup = Component::formula([clause_sup]);
+        let component_sub = Component::formula([clause_sub]);
+
+        assert_eq!(true, component_sup.implies(&component_sub));
+    }
+
+    #[test]
     fn test_or() {
         assert_eq!(
             Component::from([["Amit", "Yue"], ["David", "Yue"]]),

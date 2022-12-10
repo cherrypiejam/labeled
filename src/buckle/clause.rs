@@ -46,7 +46,21 @@ impl Clause {
 
     pub fn implies(&self, other: &Self) -> bool {
         // self is subset of other
-        self.0.is_subset(&other.0)
+        if self.0.is_empty() {
+            true
+        } else if other.0.is_empty() {
+            false
+        } else {
+            //self.0.is_subset(&other.0)
+            self.0.iter()
+                .all(|svec| other.0.iter().any(|ovec| {
+                    ovec.starts_with(svec)
+                }))
+            //other.0.iter()
+            //    .any(|ovec| self.0.iter().any(|svec| {
+            //    ovec.starts_with(svec)
+            //    }))
+        }
     }
 }
 
