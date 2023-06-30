@@ -1,4 +1,5 @@
 #![no_std]
+#![cfg_attr(feature = "buckle2", feature(btreemap_alloc, allocator_api))]
 
 extern crate alloc;
 #[cfg(test)]
@@ -9,6 +10,8 @@ extern crate quickcheck;
 pub mod buckle;
 #[cfg(feature = "dclabel")]
 pub mod dclabel;
+#[cfg(feature = "buckle2")]
+pub mod buckle2;
 
 pub trait Label {
     fn lub(self, rhs: Self) -> Self;
