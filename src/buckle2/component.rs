@@ -1,7 +1,7 @@
-// #[cfg(test)]
-// use alloc::boxed::Box;
-// #[cfg(test)]
-// use quickcheck::{empty_shrinker, Arbitrary};
+#[cfg(test)]
+use alloc::boxed::Box;
+#[cfg(test)]
+use quickcheck::{empty_shrinker, Arbitrary};
 // use serde::{Deserialize, Serialize};
 
 use super::clause::Clause;
@@ -10,19 +10,11 @@ use alloc::collections::BTreeSet;
 use core::alloc::Allocator;
 use alloc::alloc::Global;
 
-// #[derive(Debug, Clone)]
-// pub enum Component<A: Allocator + Clone = Global> {
-    // DCFalse,
-    // DCFormula(BTreeSet<Clause<A>, A>),
-// }
-
-// TODO: Alternatively
 #[derive(Debug, Clone)]
 pub enum Component<A: Allocator + Clone = Global> {
     DCFalse,
     DCFormula(BTreeSet<Clause<A>, A>, A),
 }
-//
 
 impl<A: Allocator + Clone> PartialEq for Component<A> {
     fn eq(&self, other: &Self) -> bool {
@@ -37,28 +29,32 @@ impl<A: Allocator + Clone> PartialEq for Component<A> {
 impl<A: Allocator + Clone> Eq for Component<A> {}
 
 
-// #[cfg(test)]
-// impl Arbitrary for Component {
-    // fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        // if !bool::arbitrary(g) {
-            // Component::DCFalse
-        // } else {
-            // Component::DCFormula(BTreeSet::arbitrary(g))
-        // }
-    // }
+#[cfg(test)]
+impl Arbitrary for Component {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        if !bool::arbitrary(g) {
+            Component::DCFalse
+        } else {
+            Component::DCFormula(BTreeSet::arbitrary(g), Global)
+        }
+    }
 
-    // fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        // match self {
-            // Component::DCFalse => empty_shrinker(),
-            // Component::DCFormula(clauses) => Box::new(clauses.shrink().map(Component::DCFormula)),
-        // }
-    // }
-// }
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        match self {
+            Component::DCFalse => empty_shrinker(),
+            Component::DCFormula(clauses, _) => Box::new(clauses.shrink().map(|x| Component::DCFormula(x, Global))),
+        }
+    }
+}
 
 impl Component {
     pub fn dc_true() -> Self {
         Component::dc_true_in(Global)
     }
+
+    // pub fn dc_false() -> Self {
+        // Component::DCFalse
+    // }
 }
 
 impl<A: Allocator + Clone> Component<A> {
@@ -128,27 +124,50 @@ impl<A: Allocator + Clone> Component<A> {
     }
 }
 
-// impl<C: Into<Clause> + Clone, const N: usize> From<[C; N]> for Component {
-    // fn from(clauses: [C; N]) -> Component {
-        // Component::formula(clauses)
-    // }
-// }
+impl<C: Into<Clause> + Clone, const N: usize> From<[C; N]> for Component {
+    fn from(clauses: [C; N]) -> Component {
+        Component::formula(clauses, Global)
+    }
+}
 
-// impl From<bool> for Component {
-    // fn from(clause: bool) -> Component {
-        // if clause {
-            // Component::dc_true()
-        // } else {
-            // Component::dc_false()
-        // }
-    // }
-// }
+impl From<bool> for Component {
+    fn from(clause: bool) -> Component {
+        if clause {
+            Component::dc_true()
+        } else {
+            Component::dc_false()
+        }
+    }
+}
 
-// impl From<BTreeSet<Clause>> for Component {
-    // fn from(clauses: BTreeSet<Clause>) -> Component {
-        // Component::DCFormula(clauses)
-    // }
-// }
+impl From<BTreeSet<Clause>> for Component {
+    fn from(clauses: BTreeSet<Clause>) -> Component {
+        Component::DCFormula(clauses, Global)
+    }
+}
+
+
+impl<A: Allocator + Clone, C: Into<Clause<A>> + Clone, const N: usize> From<([C; N], A)> for Component<A> {
+    fn from((clauses, alloc): ([C; N], A)) -> Component<A> {
+        Component::formula(clauses, alloc)
+    }
+}
+
+impl<A: Allocator + Clone> From<(bool, A)> for Component<A> {
+    fn from((clause, alloc): (bool, A)) -> Component<A> {
+        if clause {
+            Component::dc_true_in(alloc)
+        } else {
+            Component::dc_false()
+        }
+    }
+}
+
+impl<A: Allocator + Clone> From<(BTreeSet<Clause<A>, A>, A)> for Component<A> {
+    fn from((clauses, alloc): (BTreeSet<Clause<A>, A>, A)) -> Component<A> {
+        Component::DCFormula(clauses, alloc)
+    }
+}
 
 impl<A: Allocator + Clone> core::ops::BitAnd for Component<A> {
     type Output = Component<A>;
@@ -187,132 +206,133 @@ impl<A: Allocator + Clone> core::ops::BitOr for Component<A> {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-    // use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::alloc::Global;
 
-    // #[test]
-    // fn test_x_implies_x() {
-        // assert!(Component::from(false).implies(&Component::from(false)));
-        // assert!(Component::from(true).implies(&Component::from(true)));
-        // assert!(Component::from([["Amit"]]).implies(&Component::from([["Amit"]])));
-    // }
+    #[test]
+    fn test_x_implies_x() {
+        assert!(Component::from((false, Global)).implies(&Component::from((false, Global))));
+        assert!(Component::from((true, Global)).implies(&Component::from((true, Global))));
+        assert!(Component::from(([["Amit"]], Global)).implies(&Component::from(([["Amit"]], Global))));
+    }
 
-    // #[test]
-    // fn test_true_not_implies_not_true() {
-        // assert_eq!(
-            // false,
-            // Component::dc_true().implies(&Component::from([["Amit"]]))
-        // );
-    // }
+    #[test]
+    fn test_true_not_implies_not_true() {
+        assert_eq!(
+            false,
+            Component::dc_true().implies(&Component::from([["Amit"]]))
+        );
+    }
 
-    // #[test]
-    // fn test_nothing_implies_false() {
-        // assert_eq!(false, Component::dc_true().implies(&Component::dc_false()));
-    // }
+    #[test]
+    fn test_nothing_implies_false() {
+        assert_eq!(false, Component::dc_true().implies(&Component::dc_false()));
+    }
 
-    // #[test]
-    // fn test_false_implies_everything() {
-        // assert!(Component::dc_false().implies(&Component::dc_false()));
-        // assert!(Component::dc_false().implies(&Component::dc_true()));
-        // assert!(Component::dc_false().implies(&Component::from([["Amit"]])));
-    // }
+    #[test]
+    fn test_false_implies_everything() {
+        assert!(Component::<Global>::dc_false().implies(&Component::dc_false()));
+        assert!(Component::dc_false().implies(&Component::dc_true()));
+        assert!(Component::dc_false().implies(&Component::from([["Amit"]])));
+    }
 
-    // #[test]
-    // fn test_everything_implies_true() {
-        // assert!(Component::dc_false().implies(&Component::dc_true()));
-        // assert!(Component::from([["Amit"]]).implies(&Component::dc_true()));
-    // }
+    #[test]
+    fn test_everything_implies_true() {
+        assert!(Component::dc_false().implies(&Component::dc_true()));
+        assert!(Component::from([["Amit"]]).implies(&Component::dc_true()));
+    }
 
-    // #[test]
-    // fn test_superset_implies_subset() {
-        // assert!(Component::from([["Amit"], ["Yue"]]).implies(&Component::from([["Amit"]])));
-    // }
+    #[test]
+    fn test_superset_implies_subset() {
+        assert!(Component::from([["Amit"], ["Yue"]]).implies(&Component::from([["Amit"]])));
+    }
 
-    // #[test]
-    // fn test_reduce_simplifies() {
-        // {
-            // let mut component = Component::from([["Amit", "Yue"]]) & Component::from([["Yue"]]);
-            // component.reduce();
-            // assert_eq!(Component::from([["Yue"]]), component);
-        // }
-        // {
-            // let mut component = Component::from([["Amit", "Yue"]]) & Component::from([["Amit"]]);
-            // component.reduce();
-            // assert_eq!(Component::from([["Amit"]]), component);
-        // }
-    // }
+    #[test]
+    fn test_reduce_simplifies() {
+        {
+            let mut component = Component::from([["Amit", "Yue"]]) & Component::from([["Yue"]]);
+            component.reduce();
+            assert_eq!(Component::from([["Yue"]]), component);
+        }
+        {
+            let mut component = Component::from([["Amit", "Yue"]]) & Component::from([["Amit"]]);
+            component.reduce();
+            assert_eq!(Component::from([["Amit"]]), component);
+        }
+    }
 
-    // #[test]
-    // fn test_yue_implies_yue_sub_hello() {
-        // use alloc::{vec, string::String};
-        // let clause_sup = Clause::new_from_vec(vec![vec![String::from("Yue")]]);
-        // let clause_sub = Clause::new_from_vec(vec![vec!["Yue", "hello"]]);
+    #[test]
+    fn test_yue_implies_yue_sub_hello() {
+        use alloc::{vec, string::String};
+        let clause_sup = Clause::new_from_vec(vec![vec![String::from("Yue")]]);
+        let clause_sub = Clause::new_from_vec(vec![vec!["Yue", "hello"]]);
 
-        // assert_eq!(true, clause_sup.implies(&clause_sub));
+        assert_eq!(true, clause_sup.implies(&clause_sub));
 
-        // let component_sup = Component::formula([clause_sup]);
-        // let component_sub = Component::formula([clause_sub]);
+        let component_sup = Component::formula([clause_sup], Global);
+        let component_sub = Component::formula([clause_sub], Global);
 
-        // assert_eq!(true, component_sup.implies(&component_sub));
-    // }
+        assert_eq!(true, component_sup.implies(&component_sub));
+    }
 
-    // #[test]
-    // fn test_or() {
-        // assert_eq!(
-            // Component::from([["Amit", "Yue"], ["David", "Yue"]]),
-            // Component::from([["Amit"], ["David"]]) | Component::from([["Yue"]])
-        // );
-    // }
+    #[test]
+    fn test_or() {
+        assert_eq!(
+            Component::from([["Amit", "Yue"], ["David", "Yue"]]),
+            Component::from([["Amit"], ["David"]]) | Component::from([["Yue"]])
+        );
+    }
 
-    // quickcheck! {
-        // fn x_implies_x(component: Component) -> bool {
-            // let other = component.clone();
-            // component.implies(&other) && other.implies(&component)
-        // }
+    quickcheck! {
+        fn x_implies_x(component: Component) -> bool {
+            let other = component.clone();
+            component.implies(&other) && other.implies(&component)
+        }
 
-        // fn true_not_implies_not_true(component: Component) -> bool {
-            // if component.is_true() {
-                // true
-            // } else {
-                // !Component::dc_true().implies(&component)
-            // }
-        // }
+        fn true_not_implies_not_true(component: Component) -> bool {
+            if component.is_true() {
+                true
+            } else {
+                !Component::dc_true().implies(&component)
+            }
+        }
 
-        // fn nothing_implies_false(component: Component) -> bool {
-            // if component.is_false() {
-                // true
-            // } else {
-                // !component.implies(&Component::dc_false())
-            // }
-        // }
+        fn nothing_implies_false(component: Component) -> bool {
+            if component.is_false() {
+                true
+            } else {
+                !component.implies(&Component::dc_false())
+            }
+        }
 
-        // fn false_implies_everything(component: Component) -> bool {
-            // Component::dc_false().implies(&component)
-        // }
+        fn false_implies_everything(component: Component) -> bool {
+            Component::dc_false().implies(&component)
+        }
 
-        // fn everything_implies_true(component: Component) -> bool {
-            // component.implies(&Component::dc_true())
-        // }
+        fn everything_implies_true(component: Component) -> bool {
+            component.implies(&Component::dc_true())
+        }
 
-        // fn superset_implies_subset(component1: Component, component2: Component) -> bool {
-            // let component1 = component1 & component2.clone();
-            // component1.implies(&component2)
-        // }
+        fn superset_implies_subset(component1: Component, component2: Component) -> bool {
+            let component1 = component1 & component2.clone();
+            component1.implies(&component2)
+        }
 
-        // fn reduce_simplifies(component: Component) -> bool {
-            // let mut component = component.clone();
-            // component.reduce();
-            // if let Component::DCFormula(clauses) =  component {
-                // for (i, clausef) in clauses.iter().enumerate() {
-                    // for clauser in clauses.iter().skip(i + 1) {
-                        // if clausef.implies(clauser) || clauser.implies(clausef) {
-                            // return false
-                        // }
-                    // }
-                // }
-            // }
-            // true
-        // }
-    // }
-// }
+        fn reduce_simplifies(component: Component) -> bool {
+            let mut component = component.clone();
+            component.reduce();
+            if let Component::DCFormula(clauses, _) =  component {
+                for (i, clausef) in clauses.iter().enumerate() {
+                    for clauser in clauses.iter().skip(i + 1) {
+                        if clausef.implies(clauser) || clauser.implies(clausef) {
+                            return false
+                        }
+                    }
+                }
+            }
+            true
+        }
+    }
+}

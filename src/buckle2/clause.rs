@@ -1,7 +1,7 @@
-// #[cfg(test)]
-// use alloc::boxed::Box;
-// #[cfg(test)]
-// use quickcheck::Arbitrary;
+#[cfg(test)]
+use alloc::boxed::Box;
+#[cfg(test)]
+use quickcheck::Arbitrary;
 
 // use serde::{Deserialize, Serialize};
 
@@ -34,87 +34,36 @@ impl<A: Allocator + Clone> Ord for Clause<A> {
     }
 }
 
+#[cfg(test)]
+impl Arbitrary for Clause {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        Clause(BTreeSet::arbitrary(g))
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        Box::new(self.0.shrink().map(|x| Clause(x)))
+    }
+}
 
 
+impl<P: Into<Principal<Global>> + Clone, const N: usize> From<[P; N]> for Clause {
+    fn from(principals: [P; N]) -> Clause {
+        Clause::new(principals)
+    }
+}
 
+impl<P: Into<Principal<Global>> + Clone> From<Vec<P>> for Clause {
+    fn from(mut principals: Vec<P>) -> Clause {
+        use alloc::vec;
+        Clause::new_from_vec(principals.drain(..).map(|p| vec![p]).collect())
+    }
+}
 
-// impl<A: Allocator + Clone> Ord for Clause<A> {
-    // fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        // todo!()
-    // }
-// }
-
-// #[cfg(test)]
-// impl Arbitrary for Clause {
-    // fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        // Clause(BTreeSet::arbitrary(g))
-    // }
-
-    // fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        // Box::new(self.0.shrink().map(|x| Clause(x)))
-    // }
-// }
-
-// impl Clause {
-    // pub fn empty() -> Self {
-        // Self::new([] as [Principal; 0])
-    // }
-
-    // pub fn new<P: Into<Principal> + Clone, const N: usize>(principals: [P; N]) -> Clause {
-        // let mut result = BTreeSet::new();
-        // for p in principals.iter() {
-            // result.insert(vec![p.clone().into()]);
-        // }
-        // Self(result)
-    // }
-
-    // pub fn new_from_vec<P: Into<Principal> + Clone>(principals: Vec<Vec<P>>) -> Clause {
-        // let mut result = BTreeSet::new();
-        // for p in principals.iter() {
-            // result.insert(p.clone().drain(..).map(Into::into).collect());
-        // }
-        // Self(result)
-    // }
-
-    // #[cfg(not(feature = "allocator_api"))]
-    // pub fn implies(&self, other: &Self) -> bool {
-        // // self is subset of other
-        // if self.0.is_empty() {
-            // true
-        // } else if other.0.is_empty() {
-            // false
-        // } else {
-            // //self.0.is_subset(&other.0)
-            // self.0.iter()
-                // .all(|svec| other.0.iter().any(|ovec| {
-                    // ovec.starts_with(svec)
-                // }))
-            // //other.0.iter()
-            // //    .any(|ovec| self.0.iter().any(|svec| {
-            // //    ovec.starts_with(svec)
-            // //    }))
-        // }
-    // }
-
-// }
-
-// impl<P: Into<Principal> + Clone, const N: usize> From<[P; N]> for Clause {
-    // fn from(principals: [P; N]) -> Clause {
-        // Clause::new(principals)
-    // }
-// }
-
-// impl<P: Into<Principal> + Clone> From<Vec<P>> for Clause {
-    // fn from(mut principals: Vec<P>) -> Clause {
-        // Clause::new_from_vec(principals.drain(..).map(|p| vec![p]).collect())
-    // }
-// }
-
-// impl From<BTreeSet<Vec<Principal>>> for Clause {
-    // fn from(principals: BTreeSet<Vec<Principal>>) -> Clause {
-        // Clause(principals)
-    // }
-// }
+impl<A: Allocator + Clone, P: Into<Principal<A>> + Clone, const N: usize> From<([P; N], A)> for Clause<A> {
+    fn from((principals, alloc): ([P; N], A)) -> Clause<A> {
+        Clause::new_in(principals, alloc)
+    }
+}
 
 impl Clause {
     pub fn empty() -> Clause {
@@ -123,6 +72,29 @@ impl Clause {
 
     pub fn new<P: Into<Principal<Global>> + Clone, const N: usize>(principals: [P; N]) -> Clause {
         Self::new_in(principals, Global)
+    }
+
+    pub fn new_from_vec<P: Into<Principal<Global>> + Clone>(principals: Vec<Vec<P>>) -> Clause {
+        Self::new_from_vec_in(principals, Global)
+    }
+}
+
+impl<A: Allocator + Clone, P: Into<Principal<A>> + Clone> From<(Vec<P, A>, A)> for Clause<A> {
+    fn from((mut principals, alloc): (Vec<P, A>, A)) -> Clause<A> {
+        let mut v = Vec::new_in(alloc.clone());
+        principals.drain(..).for_each(|p| {
+            let mut vv = Vec::new_in(alloc.clone());
+            vv.push(p);
+            v.push(vv);
+        });
+        Clause::new_from_vec_in(v, alloc)
+        // Clause::new_from_vec_in(principals.drain(..).map(|p| vec![p]).collect(), alloc)
+    }
+}
+
+impl<A: Allocator + Clone> From<BTreeSet<Vec<Principal<A>, A>, A>> for Clause<A> {
+    fn from(principals: BTreeSet<Vec<Principal<A>, A>, A>) -> Clause<A> {
+        Clause(principals)
     }
 }
 
@@ -157,82 +129,72 @@ impl<A: Allocator + Clone> Clause<A> {
         Self(result)
     }
 
-
-    // pub fn new_from_vec2(principals: Vec<Vec<Principal<A>, A>, A>, alloc: A) -> Clause<A> {
-        // let mut result = BTreeSet::new_in(alloc);
-        // for p in principals.iter() {
-
-            // let mut v = Vec::new_in(alloc);
-            // for e in p.clone().into_iter() {
-                // v.push(e)
-            // }
-
-            // // let b = p.clone().into_iter().map(|x| x).collect::<Vec<Principal<A>, A>>();
-            // // let a = p.clone().drain(..).map(Into::into).collect();// .map(Into::into).collect();
-            // // result.insert(p.clone().drain(..).map(Into::into).collect());
-            // result.insert(v);
-        // }
-        // Self(result)
-    // }
-
     pub fn implies(&self, other: &Self) -> bool {
+        // self is subset of other
         if self.0.is_empty() {
             true
         } else if other.0.is_empty() {
             false
         } else {
+            //self.0.is_subset(&other.0)
             self.0.iter()
                 .all(|svec| other.0.iter().any(|ovec| {
                     ovec.starts_with(svec)
                 }))
+            //other.0.iter()
+            //    .any(|ovec| self.0.iter().any(|svec| {
+            //    ovec.starts_with(svec)
+            //    }))
         }
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-    // use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::alloc::Global;
 
-    // #[test]
-    // fn test_x_implies_x() {
-        // // False implies False
-        // assert!(Clause::empty().implies(&Clause::empty()));
+    #[test]
+    fn test_x_implies_x() {
+        // False implies False
+        assert!(Clause::empty_in(Global).implies(&Clause::empty_in(Global)));
 
-        // // "Amit" implies "Amit"
-        // assert!(Clause::from(["Amit"]).implies(&Clause::from(["Amit"])));
-    // }
+        // "Amit" implies "Amit"
+        assert!(Clause::from((["Amit"], Global)).implies(&Clause::from((["Amit"], Global))));
+        assert!(Clause::new_in(["Amit"], Global).implies(&Clause::new_in(["Amit"], Global)));
+    }
 
-    // #[test]
-    // fn test_subset_implies_superset() {
-        // // False implies "Amit"
-        // assert!(Clause::empty().implies(&Clause::from(["Amit"])));
+    #[test]
+    fn test_subset_implies_superset() {
+        // False implies "Amit"
+        assert!(Clause::empty().implies(&Clause::from((["Amit"], Global))));
 
-        // // "Amit" implies "Amit" \/ "Yue"
-        // assert!(Clause::from(["Amit"]).implies(&Clause::from(["Amit", "Yue"])));
-    // }
+        // "Amit" implies "Amit" \/ "Yue"
+        assert!(Clause::from((["Amit"], Global)).implies(&Clause::from((["Amit", "Yue"], Global))));
+    }
 
-    // #[test]
-    // fn test_superset_not_implies_subset() {
-        // // "Amit" not-implies False
-        // assert_eq!(false, Clause::from(["Amit"]).implies(&Clause::empty()));
+    #[test]
+    fn test_superset_not_implies_subset() {
+        // "Amit" not-implies False
+        assert_eq!(false, Clause::from((["Amit"], Global)).implies(&Clause::empty()));
 
-        // // "Amit" \/ "Yue" not-implies "Amit"
-        // assert_eq!(
-            // false,
-            // Clause::from(["Amit", "Yue"]).implies(&Clause::from(["Amit"]))
-        // );
-    // }
+        // "Amit" \/ "Yue" not-implies "Amit"
+        assert_eq!(
+            false,
+            Clause::from((["Amit", "Yue"], Global)).implies(&Clause::from((["Amit"], Global)))
+        );
+    }
 
-    // quickcheck! {
-        // fn empty_clause_implies_all(clause: Clause) -> bool {
-            // let empty = Clause::empty();
-            // empty.implies(&clause)
-        // }
+    quickcheck! {
+        fn empty_clause_implies_all(clause: Clause) -> bool {
+            let empty = Clause::empty();
+            empty.implies(&clause)
+        }
 
-        // fn subset_implies_superset(clause1: Clause, clause2: Clause) -> bool {
-            // let mut clause1 = clause1.clone();
-            // clause1.0.append(&mut clause2.0.clone());
-            // clause2.implies(&clause1)
-        // }
-    // }
-// }
+        fn subset_implies_superset(clause1: Clause, clause2: Clause) -> bool {
+            let mut clause1 = clause1.clone();
+            clause1.0.append(&mut clause2.0.clone());
+            clause2.implies(&clause1)
+        }
+    }
+}

@@ -5,11 +5,11 @@
 //! unlike DCLabels, Buckle principals are not strings, but rather ordered
 //! lists, where prefixes imply longer lists.
 
-// #[cfg(test)]
-// use alloc::boxed::Box;
+#[cfg(test)]
+use alloc::boxed::Box;
 use alloc::vec::Vec;
-// #[cfg(test)]
-// use quickcheck::Arbitrary;
+#[cfg(test)]
+use quickcheck::Arbitrary;
 // use serde::{Deserialize, Serialize};
 
 use core::alloc::Allocator;
@@ -25,11 +25,23 @@ pub use component::*;
 
 pub type Principal<A> = Vec<u8, A>;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct Buckle2<A: Allocator + Clone = Global> {
     pub secrecy: Component<A>,
     pub integrity: Component<A>,
     alloc: A,
+}
+
+impl<A: Allocator + Clone> PartialEq for Buckle2<A> {
+    fn eq(&self, other: &Self) -> bool {
+        self.secrecy.eq(&other.secrecy) && self.integrity.eq(&other.integrity)
+    }
+}
+
+impl Buckle2 {
+    pub fn parse(input: &str) -> Result<Buckle2, ()> {
+        Self::parse_in(input, Global)
+    }
 }
 
 impl<A: Allocator + Clone> Buckle2<A> {
@@ -37,15 +49,15 @@ impl<A: Allocator + Clone> Buckle2<A> {
     ///
     /// principles with '/'. The backslash character ('\') allows escaping these
     /// special characters (including itself).
-    pub fn parse_in(input: &str, alloc: A) -> Option<Buckle2<A>> {
+    pub fn parse_in(input: &str, alloc: A) -> Result<Buckle2<A>, ()> {
         let mut s = input.split(',');
         match (s.next(), s.next(), s.next()) {
-            (Some(s), Some(i), None) => Some(Buckle2 {
+            (Some(s), Some(i), None) => Ok(Buckle2 {
                     secrecy: Self::parse_component(s, alloc.clone()),
                     integrity: Self::parse_component(i, alloc.clone()),
                     alloc,
             }),
-            _ => None,
+            _ => Err(()),
         }
     }
 
@@ -74,76 +86,44 @@ impl<A: Allocator + Clone> Buckle2<A> {
             Component::DCFormula(formula, alloc)
         }
     }
-
-    // pub fn parser_in(input: &str, alloc: A) -> nom::IResult<&str, Buckle2<A>> {
-        // use alloc::collections::BTreeSet;
-        // use nom::{
-            // bytes::complete::{escaped_transform, tag},
-            // character::complete::{alphanumeric1, one_of},
-            // multi::separated_list1,
-            // sequence::tuple,
-            // Parser,
-        // };
-
-        // let a = if let Some(_) = input.find('T') {
-            // Component::dc_true_in(alloc)
-        // } else if let Some(_) =  input.find('F') {
-            // Component::dc_false()
-        // } else {
-
-        // };
-
-        // // fn component(input: &str, alloc: A) -> nom::IResult<&str, Component<A>> {
-            // // tag("T")
-                // // .map(|_| Component::dc_true_in(alloc))
-                // // .or(tag("F").map(|_| Component::dc_false()))
-                // // .or(nom::combinator::map(
-                    // // separated_list1(
-                        // // tag("&"),
-                        // // separated_list1(
-                            // // tag("|"),
-                            // // separated_list1(
-                                // // tag("/"),
-                                // // escaped_transform(alphanumeric1, '\\', one_of(r#",|&/\"#)),
-                            // // ),
-                        // // ),
-                    // // ),
-                    // // |mut c| {
-                        // // Component::DCFormula(
-                            // // c.iter_mut()
-                                // // .map(|c| c.drain(..).collect::<BTreeSet<Vec<Principal<A>>>>().into())
-                                // // .collect::<BTreeSet<Clause>>(),
-                            // // alloc,
-                        // // )
-                    // // },
-                // // ))
-                // // .parse(input)
-        // // }
-
-        // let (input, (secrecy, _, integrity)) =
-            // tuple((component, tag(","), component)).parse(input)?;
-
-        // Ok((input, Buckle::new(secrecy, integrity)))
-    // }
 }
 
-// #[cfg(test)]
-// impl Arbitrary for Buckle {
-    // fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        // Buckle {
-            // secrecy: Component::arbitrary(g),
-            // integrity: Component::arbitrary(g),
-        // }
-    // }
+#[cfg(test)]
+impl Arbitrary for Buckle2 {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        Buckle2 {
+            secrecy: Component::arbitrary(g),
+            integrity: Component::arbitrary(g),
+            alloc: Global,
+        }
+    }
 
-    // fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        // Box::new(
-            // (self.secrecy.clone(), self.integrity.clone())
-                // .shrink()
-                // .map(|(secrecy, integrity)| Buckle { secrecy, integrity }),
-        // )
-    // }
-// }
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        Box::new(
+            (self.secrecy.clone(), self.integrity.clone())
+                .shrink()
+                .map(|(secrecy, integrity)| Buckle2 { secrecy, integrity, alloc: Global }),
+        )
+    }
+}
+
+impl Buckle2 {
+    pub fn new<S: Into<Component>, I: Into<Component>>(secrecy: S, integrity: I) -> Buckle2 {
+        Self::new_in(secrecy, integrity, Global)
+    }
+
+    pub fn public() -> Buckle2 {
+        Self::public_in(Global)
+    }
+
+    pub fn top() -> Buckle2 {
+        Self::top_in(Global)
+    }
+
+    pub fn bottom() -> Buckle2 {
+        Self::bottom_in(Global)
+    }
+}
 
 impl<A: Allocator + Clone> Buckle2<A> {
     pub fn new_in<S: Into<Component<A>>, I: Into<Component<A>>>(secrecy: S, integrity: I, alloc: A) -> Buckle2<A> {
@@ -234,305 +214,306 @@ impl<A: Allocator + Clone> HasPrivilege for Buckle2<A> {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-    // use super::*;
-    // use alloc::vec;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::vec;
+    use alloc::alloc::Global;
 
-    // #[test]
-    // fn test_can_flow_to_with_privilege() {
-        // let privilege = &Component::formula([["go_grader"]]);
-        // // declassification
+    #[test]
+    fn test_can_flow_to_with_privilege() {
+        let privilege = &Component::formula([["go_grader"]], Global);
+        // declassification
+        assert_eq!(
+            true,
+            Buckle2::new([["go_grader"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&Buckle2::new(true, [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            Buckle2::new([["go_grader"], ["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&Buckle2::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            Buckle2::new([vec!["go_grader", "staff"], vec!["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&Buckle2::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            Buckle2::new([vec!["go_grader", "staff"], vec!["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&Buckle2::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            Buckle2::new(
+                [
+                    vec!["go_grader", "staff"],
+                    vec!["go_grader", "alice"],
+                    vec!["bob"]
+                ],
+                [["go_grader"]]
+            )
+            .can_flow_to_with_privilege(&Buckle2::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        assert_eq!(
+            true,
+            Buckle2::new(
+                [
+                    vec!["go_grader", "staff"],
+                    vec!["go_grader", "alice"],
+                    vec!["bob"]
+                ],
+                [["go_grader"]]
+            )
+            .can_flow_to_with_privilege(&Buckle2::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        // banned declassification
+        assert_eq!(
+            false,
+            Buckle2::new([["go_grader"], ["staff"], ["bob"]], [["go_grader"]])
+                .can_flow_to_with_privilege(&Buckle2::new([["bob"]], [["go_grader"]]), privilege)
+        );
+
+        // endorse
+        assert_eq!(
+            true,
+            Buckle2::new([["bob"]], true)
+                .can_flow_to_with_privilege(&Buckle2::new([["bob"]], [["go_grader"]]), privilege)
+        );
+    }
+
+    #[test]
+    fn test_downgrade() {
+        // True can't downgrade anything
+        assert_eq!(
+            Buckle2::new(true, true),
+            Buckle2::new(true, true).downgrade(&true.into())
+        );
+        assert_eq!(
+            Buckle2::new(false, true),
+            Buckle2::new(false, true).downgrade(&true.into())
+        );
+        assert_eq!(
+            Buckle2::new(true, false),
+            Buckle2::new(true, false).downgrade(&true.into())
+        );
+        assert_eq!(
+            Buckle2::new([["amit"]], false),
+            Buckle2::new([["amit"]], false).downgrade(&true.into())
+        );
+        assert_eq!(
+            Buckle2::new(false, [["amit"]]),
+            Buckle2::new(false, [["amit"]]).downgrade(&true.into())
+        );
+
+        // False downgrades everything
+        assert_eq!(
+            Buckle2::new(true, false),
+            Buckle2::new(true, true).downgrade(&false.into())
+        );
+        assert_eq!(
+            Buckle2::new(true, false),
+            Buckle2::new(false, true).downgrade(&false.into())
+        );
+        assert_eq!(
+            Buckle2::new(true, false),
+            Buckle2::new(true, false).downgrade(&false.into())
+        );
+        assert_eq!(
+            Buckle2::new(true, false),
+            Buckle2::new([["amit"]], false).downgrade(&false.into())
+        );
+        assert_eq!(
+            Buckle2::new(true, false),
+            Buckle2::new(false, [["amit"]]).downgrade(&false.into())
+        );
+    }
+
+    #[test]
+    fn test_extreme_can_flow_to() {
+        assert_eq!(true, Buckle2::bottom().can_flow_to(&Buckle2::top()));
+        assert_eq!(true, Buckle2::bottom().can_flow_to(&Buckle2::public()));
+        assert_eq!(true, Buckle2::public().can_flow_to(&Buckle2::top()));
+
+        assert_eq!(false, Buckle2::top().can_flow_to(&Buckle2::bottom()));
+        assert_eq!(false, Buckle2::top().can_flow_to(&Buckle2::public()));
+        assert_eq!(false, Buckle2::public().can_flow_to(&Buckle2::bottom()));
+    }
+
+    #[test]
+    fn test_basic_can_flow_to_integrity() {
+        assert_eq!(
+            true,
+            Buckle2::new(true, [["Amit"]]).can_flow_to(&Buckle2::public())
+        );
+
+        assert_eq!(
+            true,
+            Buckle2::new(true, [["Amit", "Yue"]]).can_flow_to(&Buckle2::public())
+        );
+
+        assert_eq!(
+            true,
+            Buckle2::new(true, [["Amit"], ["Yue"]]).can_flow_to(&Buckle2::new(true, [["Amit"]]))
+        );
+
+        assert_eq!(
+            true,
+            Buckle2::new(true, [["Amit"], ["Yue"]])
+                .can_flow_to(&Buckle2::new(true, [["Amit", "Yue"]]))
+        );
+
+        assert_eq!(
+            false,
+            Buckle2::new(true, [["Amit", "Yue"]])
+                .can_flow_to(&Buckle2::new(true, [["Amit"], ["Yue"]]))
+        );
+    }
+
+    #[test]
+    fn test_basic_can_flow_to_secrecy() {
+        assert_eq!(
+            false,
+            Buckle2::new([["Amit"]], true).can_flow_to(&Buckle2::public())
+        );
+
+        assert_eq!(
+            false,
+            Buckle2::new([["Amit", "Yue"]], true).can_flow_to(&Buckle2::public())
+        );
+
+        assert_eq!(
+            false,
+            Buckle2::new([["Amit"], ["Yue"]], true).can_flow_to(&Buckle2::new([["Amit"]], true))
+        );
+
+        assert_eq!(
+            false,
+            Buckle2::new([["Amit"], ["Yue"]], true).can_flow_to(&Buckle2::new([["Amit"]], true))
+        );
+
+        assert_eq!(
+            false,
+            Buckle2::new([["Amit"], ["Yue"]], true)
+                .can_flow_to(&Buckle2::new([["Amit", "Yue"]], true))
+        );
+
+        assert_eq!(
+            true,
+            Buckle2::new([["Amit", "Yue"]], true)
+                .can_flow_to(&Buckle2::new([["Amit"], ["Yue"]], true))
+        );
+    }
+
+    #[test]
+    fn test_lub() {
+        assert_eq!(Buckle2::top(), Buckle2::public().lub(Buckle2::top()));
+        assert_eq!(Buckle2::top(), Buckle2::top().lub(Buckle2::public()));
+        assert_eq!(Buckle2::top(), Buckle2::bottom().lub(Buckle2::top()));
+        assert_eq!(Buckle2::public(), Buckle2::bottom().lub(Buckle2::public()));
+
+        assert_eq!(
+            Buckle2::new([["Amit"], ["Yue"]], true),
+            Buckle2::new([["Amit"]], true).lub(Buckle2::new([["Yue"]], true))
+        );
+
+        assert_eq!(
+            Buckle2::new(true, [["Amit", "Yue"]]),
+            Buckle2::new(true, [["Amit"]]).lub(Buckle2::new(true, [["Yue"]]))
+        );
+    }
+
+    #[test]
+    fn test_glb() {
+        assert_eq!(Buckle2::public(), Buckle2::public().glb(Buckle2::top()));
+        assert_eq!(Buckle2::public(), Buckle2::top().glb(Buckle2::public()));
+        assert_eq!(Buckle2::bottom(), Buckle2::bottom().glb(Buckle2::top()));
+        assert_eq!(Buckle2::bottom(), Buckle2::bottom().glb(Buckle2::public()));
+
+        assert_eq!(
+            Buckle2::new([["Amit", "Yue"]], true),
+            Buckle2::new([["Amit"]], true).glb(Buckle2::new([["Yue"]], true))
+        );
+
+        assert_eq!(
+            Buckle2::new(true, [["Amit"], ["Yue"]]),
+            Buckle2::new(true, [["Amit"]]).glb(Buckle2::new(true, [["Yue"]]))
+        );
+    }
+
+    #[test]
+    fn test_parse() {
+        assert_eq!(Buckle2::parse("T,T"), Ok(Buckle2::public()));
+        assert_eq!(Buckle2::parse("T,F"), Ok(Buckle2::bottom()));
+        assert_eq!(Buckle2::parse("F,T"), Ok(Buckle2::top()));
+        assert_eq!(
+            Buckle2::parse("Amit,Yue"),
+            Ok(Buckle2::new([["Amit"]], [["Yue"]]))
+        );
+        assert_eq!(
+            Buckle2::parse("Amit|Yue,Yue"),
+            Ok(Buckle2::new([["Amit", "Yue"]], [["Yue"]]))
+        );
+        assert_eq!(
+            Buckle2::parse("Amit&Yue,Yue"),
+            Ok(Buckle2::new([["Amit"], ["Yue"]], [["Yue"]]))
+        );
+        assert_eq!(
+            Buckle2::parse("Amit&Yue|Natalie|Gongqi&Deian,Yue"),
+            Ok(Buckle2::new(
+                [
+                    Clause::from(["Amit"]),
+                    Clause::from(["Yue", "Natalie", "Gongqi"]),
+                    Clause::from(["Deian"])
+                ],
+                [["Yue"]]
+            ))
+        );
         // assert_eq!(
-            // true,
-            // Buckle::new([["go_grader"]], [["go_grader"]])
-                // .can_flow_to_with_privilege(&Buckle::new(true, [["go_grader"]]), privilege)
+            // Buckle2::parse(r#"Am\&it&Yue,Y\|ue"#),
+            // Ok(Buckle2::new([["Am&it"], ["Yue"]], [["Y|ue"]]))
         // );
 
-        // assert_eq!(
-            // true,
-            // Buckle::new([["go_grader"], ["bob"]], [["go_grader"]])
-                // .can_flow_to_with_privilege(&Buckle::new([["bob"]], [["go_grader"]]), privilege)
-        // );
+        assert_eq!(
+            Buckle2::parse("Amit/test,Amit"),
+            Ok(Buckle2::new(
+                Component::from([Clause::new_from_vec(vec![vec!["Amit", "test"]])]),
+                [["Amit"]]
+            ))
+        )
+    }
 
-        // assert_eq!(
-            // true,
-            // Buckle::new([vec!["go_grader", "staff"], vec!["bob"]], [["go_grader"]])
-                // .can_flow_to_with_privilege(&Buckle::new([["bob"]], [["go_grader"]]), privilege)
-        // );
+    quickcheck! {
+        fn everything_can_flow_to_top(lbl: Buckle2) -> bool {
+            let top = Buckle2::top();
+            lbl.can_flow_to(&top)
+        }
 
-        // assert_eq!(
-            // true,
-            // Buckle::new([vec!["go_grader", "staff"], vec!["bob"]], [["go_grader"]])
-                // .can_flow_to_with_privilege(&Buckle::new([["bob"]], [["go_grader"]]), privilege)
-        // );
+        fn bottom_can_flow_to_everything(lbl: Buckle2) -> bool {
+            let bottom = Buckle2::bottom();
+            bottom.can_flow_to(&lbl)
+        }
 
-        // assert_eq!(
-            // true,
-            // Buckle::new(
-                // [
-                    // vec!["go_grader", "staff"],
-                    // vec!["go_grader", "alice"],
-                    // vec!["bob"]
-                // ],
-                // [["go_grader"]]
-            // )
-            // .can_flow_to_with_privilege(&Buckle::new([["bob"]], [["go_grader"]]), privilege)
-        // );
+        fn both_can_flow_to_lub(lbl1: Buckle2, lbl2: Buckle2) -> bool {
+            let result = lbl1.clone().lub(lbl2.clone());
+            lbl1.can_flow_to(&result) && lbl2.can_flow_to(&result)
+        }
 
-        // assert_eq!(
-            // true,
-            // Buckle::new(
-                // [
-                    // vec!["go_grader", "staff"],
-                    // vec!["go_grader", "alice"],
-                    // vec!["bob"]
-                // ],
-                // [["go_grader"]]
-            // )
-            // .can_flow_to_with_privilege(&Buckle::new([["bob"]], [["go_grader"]]), privilege)
-        // );
+        fn glb_can_flow_to_both(lbl1: Buckle2, lbl2: Buckle2) -> bool {
+            let result = lbl1.clone().glb(lbl2.clone());
+            result.can_flow_to(&lbl1) && result.can_flow_to(&lbl2)
+        }
 
-        // // banned declassification
-        // assert_eq!(
-            // false,
-            // Buckle::new([["go_grader"], ["staff"], ["bob"]], [["go_grader"]])
-                // .can_flow_to_with_privilege(&Buckle::new([["bob"]], [["go_grader"]]), privilege)
-        // );
-
-        // // endorse
-        // assert_eq!(
-            // true,
-            // Buckle::new([["bob"]], true)
-                // .can_flow_to_with_privilege(&Buckle::new([["bob"]], [["go_grader"]]), privilege)
-        // );
-    // }
-
-    // #[test]
-    // fn test_downgrade() {
-        // // True can't downgrade anything
-        // assert_eq!(
-            // Buckle::new(true, true),
-            // Buckle::new(true, true).downgrade(&true.into())
-        // );
-        // assert_eq!(
-            // Buckle::new(false, true),
-            // Buckle::new(false, true).downgrade(&true.into())
-        // );
-        // assert_eq!(
-            // Buckle::new(true, false),
-            // Buckle::new(true, false).downgrade(&true.into())
-        // );
-        // assert_eq!(
-            // Buckle::new([["amit"]], false),
-            // Buckle::new([["amit"]], false).downgrade(&true.into())
-        // );
-        // assert_eq!(
-            // Buckle::new(false, [["amit"]]),
-            // Buckle::new(false, [["amit"]]).downgrade(&true.into())
-        // );
-
-        // // False downgrades everything
-        // assert_eq!(
-            // Buckle::new(true, false),
-            // Buckle::new(true, true).downgrade(&false.into())
-        // );
-        // assert_eq!(
-            // Buckle::new(true, false),
-            // Buckle::new(false, true).downgrade(&false.into())
-        // );
-        // assert_eq!(
-            // Buckle::new(true, false),
-            // Buckle::new(true, false).downgrade(&false.into())
-        // );
-        // assert_eq!(
-            // Buckle::new(true, false),
-            // Buckle::new([["amit"]], false).downgrade(&false.into())
-        // );
-        // assert_eq!(
-            // Buckle::new(true, false),
-            // Buckle::new(false, [["amit"]]).downgrade(&false.into())
-        // );
-    // }
-
-    // #[test]
-    // fn test_extreme_can_flow_to() {
-        // assert_eq!(true, Buckle::bottom().can_flow_to(&Buckle::top()));
-        // assert_eq!(true, Buckle::bottom().can_flow_to(&Buckle::public()));
-        // assert_eq!(true, Buckle::public().can_flow_to(&Buckle::top()));
-
-        // assert_eq!(false, Buckle::top().can_flow_to(&Buckle::bottom()));
-        // assert_eq!(false, Buckle::top().can_flow_to(&Buckle::public()));
-        // assert_eq!(false, Buckle::public().can_flow_to(&Buckle::bottom()));
-    // }
-
-    // #[test]
-    // fn test_basic_can_flow_to_integrity() {
-        // assert_eq!(
-            // true,
-            // Buckle::new(true, [["Amit"]]).can_flow_to(&Buckle::public())
-        // );
-
-        // assert_eq!(
-            // true,
-            // Buckle::new(true, [["Amit", "Yue"]]).can_flow_to(&Buckle::public())
-        // );
-
-        // assert_eq!(
-            // true,
-            // Buckle::new(true, [["Amit"], ["Yue"]]).can_flow_to(&Buckle::new(true, [["Amit"]]))
-        // );
-
-        // assert_eq!(
-            // true,
-            // Buckle::new(true, [["Amit"], ["Yue"]])
-                // .can_flow_to(&Buckle::new(true, [["Amit", "Yue"]]))
-        // );
-
-        // assert_eq!(
-            // false,
-            // Buckle::new(true, [["Amit", "Yue"]])
-                // .can_flow_to(&Buckle::new(true, [["Amit"], ["Yue"]]))
-        // );
-    // }
-
-    // #[test]
-    // fn test_basic_can_flow_to_secrecy() {
-        // assert_eq!(
-            // false,
-            // Buckle::new([["Amit"]], true).can_flow_to(&Buckle::public())
-        // );
-
-        // assert_eq!(
-            // false,
-            // Buckle::new([["Amit", "Yue"]], true).can_flow_to(&Buckle::public())
-        // );
-
-        // assert_eq!(
-            // false,
-            // Buckle::new([["Amit"], ["Yue"]], true).can_flow_to(&Buckle::new([["Amit"]], true))
-        // );
-
-        // assert_eq!(
-            // false,
-            // Buckle::new([["Amit"], ["Yue"]], true).can_flow_to(&Buckle::new([["Amit"]], true))
-        // );
-
-        // assert_eq!(
-            // false,
-            // Buckle::new([["Amit"], ["Yue"]], true)
-                // .can_flow_to(&Buckle::new([["Amit", "Yue"]], true))
-        // );
-
-        // assert_eq!(
-            // true,
-            // Buckle::new([["Amit", "Yue"]], true)
-                // .can_flow_to(&Buckle::new([["Amit"], ["Yue"]], true))
-        // );
-    // }
-
-    // #[test]
-    // fn test_lub() {
-        // assert_eq!(Buckle::top(), Buckle::public().lub(Buckle::top()));
-        // assert_eq!(Buckle::top(), Buckle::top().lub(Buckle::public()));
-        // assert_eq!(Buckle::top(), Buckle::bottom().lub(Buckle::top()));
-        // assert_eq!(Buckle::public(), Buckle::bottom().lub(Buckle::public()));
-
-        // assert_eq!(
-            // Buckle::new([["Amit"], ["Yue"]], true),
-            // Buckle::new([["Amit"]], true).lub(Buckle::new([["Yue"]], true))
-        // );
-
-        // assert_eq!(
-            // Buckle::new(true, [["Amit", "Yue"]]),
-            // Buckle::new(true, [["Amit"]]).lub(Buckle::new(true, [["Yue"]]))
-        // );
-    // }
-
-    // #[test]
-    // fn test_glb() {
-        // assert_eq!(Buckle::public(), Buckle::public().glb(Buckle::top()));
-        // assert_eq!(Buckle::public(), Buckle::top().glb(Buckle::public()));
-        // assert_eq!(Buckle::bottom(), Buckle::bottom().glb(Buckle::top()));
-        // assert_eq!(Buckle::bottom(), Buckle::bottom().glb(Buckle::public()));
-
-        // assert_eq!(
-            // Buckle::new([["Amit", "Yue"]], true),
-            // Buckle::new([["Amit"]], true).glb(Buckle::new([["Yue"]], true))
-        // );
-
-        // assert_eq!(
-            // Buckle::new(true, [["Amit"], ["Yue"]]),
-            // Buckle::new(true, [["Amit"]]).glb(Buckle::new(true, [["Yue"]]))
-        // );
-    // }
-
-    // #[test]
-    // fn test_parse() {
-        // assert_eq!(Buckle::parse("T,T"), Ok(Buckle::public()));
-        // assert_eq!(Buckle::parse("T,F"), Ok(Buckle::bottom()));
-        // assert_eq!(Buckle::parse("F,T"), Ok(Buckle::top()));
-        // assert_eq!(
-            // Buckle::parse("Amit,Yue"),
-            // Ok(Buckle::new([["Amit"]], [["Yue"]]))
-        // );
-        // assert_eq!(
-            // Buckle::parse("Amit|Yue,Yue"),
-            // Ok(Buckle::new([["Amit", "Yue"]], [["Yue"]]))
-        // );
-        // assert_eq!(
-            // Buckle::parse("Amit&Yue,Yue"),
-            // Ok(Buckle::new([["Amit"], ["Yue"]], [["Yue"]]))
-        // );
-        // assert_eq!(
-            // Buckle::parse("Amit&Yue|Natalie|Gongqi&Deian,Yue"),
-            // Ok(Buckle::new(
-                // [
-                    // Clause::from(["Amit"]),
-                    // Clause::from(["Yue", "Natalie", "Gongqi"]),
-                    // Clause::from(["Deian"])
-                // ],
-                // [["Yue"]]
-            // ))
-        // );
-        // assert_eq!(
-            // Buckle::parse(r#"Am\&it&Yue,Y\|ue"#),
-            // Ok(Buckle::new([["Am&it"], ["Yue"]], [["Y|ue"]]))
-        // );
-
-        // assert_eq!(
-            // Buckle::parse("Amit/test,Amit"),
-            // Ok(Buckle::new(
-                // Component::from([Clause::new_from_vec(vec![vec!["Amit", "test"]])]),
-                // [["Amit"]]
-            // ))
-        // )
-    // }
-
-    // quickcheck! {
-        // fn everything_can_flow_to_top(lbl: Buckle) -> bool {
-            // let top = Buckle::top();
-            // lbl.can_flow_to(&top)
-        // }
-
-        // fn bottom_can_flow_to_everything(lbl: Buckle) -> bool {
-            // let bottom = Buckle::bottom();
-            // bottom.can_flow_to(&lbl)
-        // }
-
-        // fn both_can_flow_to_lub(lbl1: Buckle, lbl2: Buckle) -> bool {
-            // let result = lbl1.clone().lub(lbl2.clone());
-            // lbl1.can_flow_to(&result) && lbl2.can_flow_to(&result)
-        // }
-
-        // fn glb_can_flow_to_both(lbl1: Buckle, lbl2: Buckle) -> bool {
-            // let result = lbl1.clone().glb(lbl2.clone());
-            // result.can_flow_to(&lbl1) && result.can_flow_to(&lbl2)
-        // }
-
-        // fn endorse_equiv_downgrade_to(lbl: Buckle, privilege: Component) -> bool {
-            // let target = Buckle { secrecy: lbl.secrecy.clone(), integrity: lbl.integrity.clone() & privilege.clone() };
-            // lbl.clone().downgrade_to(target, &privilege) == lbl.endorse(&privilege)
-        // }
-    // }
-// }
+        fn endorse_equiv_downgrade_to(lbl: Buckle2, privilege: Component) -> bool {
+            let target = Buckle2 { secrecy: lbl.secrecy.clone(), integrity: lbl.integrity.clone() & privilege.clone(), alloc: Global };
+            lbl.clone().downgrade_to(target, &privilege) == lbl.endorse(&privilege)
+        }
+    }
+}
