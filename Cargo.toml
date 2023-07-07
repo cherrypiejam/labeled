@@ -7,8 +7,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-serde = {version = "1.0.102", features = ["derive"]}
-nom = "7"
+serde = {version = "1.0.102", features = ["derive"], optional = true}
+nom = {version = "7", optional = true}
 
 [dev-dependencies]
 quickcheck = "1"
@@ -16,6 +16,6 @@ quickcheck_macros = "1"
 
 [features]
 default = [ "buckle2" ]
-dclabel = []
-buckle = []
+dclabel = [ "dep:serde", "dep:nom" ]
+buckle = [ "dep:serde", "dep:nom" ]
 buckle2 = []
